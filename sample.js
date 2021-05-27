@@ -187,6 +187,8 @@ console.log( '' );
 console.log( 'KST3320 Parser Example (v' + VER + ')\n');
 console.log( 'Parsed LPP messages appear below.  See code' );
 console.log( 'for parsing details.\n');
+console.log( 'Find firmware spec here: \n' );
+console.log( '   https://kstechnologies.com/docs/KST3320_firmware_spec.pdf\n');
 console.log( '---------------------------------' );
 console.log( '           DISTANCE');
 console.log( '---------------------------------' );
