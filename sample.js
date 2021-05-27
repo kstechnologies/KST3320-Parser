@@ -45,8 +45,8 @@
  * OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * 
 /* ------------------------------------------------------------------ }}} */
+'use strict';
 
-const DEBUG  = true;
 const VER    = '1.0.0';
 
 /* ------------------------------------------------------------------ */
@@ -56,16 +56,18 @@ const VER    = '1.0.0';
  *               our lat/lng values are negative...
  * 
  * @param num    Number to check.
+ * @param bytes  Byte width of the integer
  * 
- * @return tc    Corrected number
+ * @return tc    Corrected signed integer
  */
 /* ------------------------------------------------------------------ */
-function twosCompl( num )
+function signedInt( num, bytes )
 {
     let tc = 0;
+    const mask = 0x1 << ((bytes * 8) - 1);
+    const max = 0x1 << (bytes * 8);
 
-    if ( (0x800000 & num) == 0x800000 ) {
-        const max = parseInt("1000000",16);
+    if ( (mask & num) == mask ) {
         tc = ((max - num) * -1);
     } else {
         tc = num;
@@ -99,6 +101,7 @@ function getUniversalFormat( hex )
     let payload = {};
 
     // LPP Parser
+    // -----------
     // DISTANCE (mm)
     if( type == 82 ) {
         const distance = parseInt(hex.substring(4,8), 16);
@@ -106,64 +109,82 @@ function getUniversalFormat( hex )
             distance: distance
         };
 
-    // BATTERY
+    // BATTERY (%)
     } else if( type == 78 ) {
         const battery = parseInt(hex.substring(4,8), 16);
         payload = {
             battery: battery
         };
 
-    // GPS (STANDARD) 
-    } else if( type == 88 && hex.length == 22 ){
-        const rawLat  = parseInt(hex.substring(4,10), 16);
-        const lat     = twosCompl(rawLat)/GPSScaleFactor;
-        const rawLng  = parseInt(hex.substring(10,16), 16);
-        const lng     = twosCompl(rawLng)/GPSScaleFactor;
-        const alt     = parseInt(hex.substring(16,22), 16)/ALTScaleFactor;
-        if( (lat != 0.0) && (lng != 0.0) ) {
-            payload = {
-                lat  : lat,
-                lng  : lng,
-                alt  : alt
-            };
-        }
+	// ACCELEROMETER (g)
+    // NOTE: Only supported in firmware version 0.6.18
+	} else if ( type == 71 ) {
+		// LPP Data Type 71: Accelerometer
+		const accelX = parseInt(hex.substring(4,8), 16);
+		const accelY = parseInt(hex.substring(8,12), 16);
+		const accelZ = parseInt(hex.substring(12), 16);
+
+        const signedAccelX = (signedInt(accelX,2)/ACCScaleFactor);
+        const signedAccelY = (signedInt(accelY,2)/ACCScaleFactor);
+        const signedAccelZ = (signedInt(accelZ,2)/ACCScaleFactor);
+
+		payload = {
+			accelX  : signedAccelX,
+		    accelY  : signedAccelY,
+		 	accelZ  : signedAccelZ
+		};
+
+	// GPS (STANDARD) 
+	} else if( type == 88 && hex.length == 22 ){
+		const rawLat  = parseInt(hex.substring(4,10), 16);
+		const lat     = signedInt(rawLat,3)/GPSScaleFactor;
+		const rawLng  = parseInt(hex.substring(10,16), 16);
+		const lng     = signedInt(rawLng,3)/GPSScaleFactor;
+		const alt     = parseInt(hex.substring(16,22), 16)/ALTScaleFactor;
+        payload = {
+            lat  : lat,
+            lng  : lng,
+            alt  : alt
+       };
 
     // GPS (EXTENDED)
     } else if( type == 88 && hex.length == 40 ){
         const rawLat  = parseInt(hex.substring(4,10), 16);
-        const lat     = twosCompl(rawLat)/GPSScaleFactor;
+        const lat     = signedInt(rawLat,3)/GPSScaleFactor;
         const rawLng  = parseInt(hex.substring(10,16), 16);
-        const lng     = twosCompl(rawLng)/GPSScaleFactor;
+        const lng     = signedInt(rawLng,3)/GPSScaleFactor;
         const alt     = parseInt(hex.substring(16,22), 16)/ALTScaleFactor;
         const hacc    = parseInt(hex.substring(22,30), 16)/ACCScaleFactor;
         const vacc    = parseInt(hex.substring(30,38), 16)/ACCScaleFactor;
         const sat     = parseInt(hex.substring(38,40), 16);
-        if( (lat != 0.0) && (lng != 0.0) ) {
-            payload = {
-                lat   : lat,
-                lng   : lng,
-                alt   : alt,
-                hacc  : hacc,
-                vacc  : vacc,
-                sat   : sat
-            };
-        }
+        payload = {
+            lat   : lat,
+            lng   : lng,
+            alt   : alt,
+            hacc  : hacc,
+            vacc  : vacc,
+            sat   : sat
+        };
 
     // UNKNOWN
     } else {
+        payload = {
+            error: 'ERROR: Unknown LPP packet' 
+        };
     }
 
     return payload;
 }
 
 // LPP Messages
-let dist_data = "01820036";                                     /*< 36 = 54mm distance      */
-let batt_data = "017863";                                       /*< 63 = 99% battery        */
-let gps_data = "018805F371F006170372EE";                        /*< 39.0001 lat, -104.7014 lng, 2260.30m    */
-let gps_ext_data = "018805F371F006170372EE00018D800000FA3604";  /*< gps + 101.760m hor. acc., 64.054 vert. acc, 4 sat   */
+const dist_data = "01820036";                                     /*< 36 = 54mm distance      */
+const batt_data = "017863";                                       /*< 63 = 99% battery        */
+const accel_data = "01710000FFFD03EB";                            /*< 0, -0.003, 1.003        */
+const gps_data = "018805F371F006170372EE";                        /*< 39.0001 lat, -104.7014 lng, 2260.30m    */
+const gps_ext_data = "018805F371F006170372EE00018D800000FA3604";  /*< gps + 101.760m hor. acc., 64.054 vert. acc, 4 sat   */
 
 console.log( '' );
-console.log( 'KST3320 Parser Example\n');
+console.log( 'KST3320 Parser Example (v' + VER + ')\n');
 console.log( 'Parsed LPP messages appear below.  See code' );
 console.log( 'for parsing details.\n');
 console.log( '---------------------------------' );
@@ -175,6 +196,12 @@ console.log( '---------------------------------' );
 console.log( '            BATTERY');
 console.log( '---------------------------------' );
 console.log( getUniversalFormat(batt_data) );
+console.log( '' );
+console.log( '---------------------------------' );
+console.log( '          ACCELEROMETER');
+console.log( '---------------------------------' );
+console.log( 'NOTE: Only supported in firmware version 0.6.18');
+console.log( getUniversalFormat(accel_data) );
 console.log( '' );
 console.log( '---------------------------------' );
 console.log( '          STANDARD GPS');

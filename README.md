@@ -5,3 +5,5 @@ To run:
 
     node sample.js
 
+Open in your favorite editor to view the parsing function.
+
